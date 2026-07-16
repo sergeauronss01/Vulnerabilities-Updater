@@ -23,6 +23,7 @@ def summarize_vulnerability(content: str, url: str, pub_date: str) -> Vulnerabil
     3. NEVER explain how to weaponize or trigger the vulnerability.
     4. Strip any offensive or dangerous content. Focus entirely on risk awareness, impact analysis, and remediation.
     5. If no valid vulnerability information exists, output a safe, generalized response marking it as an informational update.
+    6. All information gotten should be translated in french.
     
     CONTEXT:
     Reference URL: {url}

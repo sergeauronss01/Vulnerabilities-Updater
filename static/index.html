@@ -70,12 +70,13 @@
     <header>
         <h1>Vulnerability Intelligence</h1>
         <button onclick="triggerCrawl()">Run Intelligence Crawler</button>
+        <button onclick="fetchIntel()">Load CVEs</button>
     </header>
 
     <input type="text" id="searchInput" class="search-bar" placeholder="Filter by CVE or keyword..." onkeyup="filterCards()">
 
     <div class="grid" id="vulnGrid">
-        </div>
+    </div>
 
     <script>
         async function fetchIntel() {

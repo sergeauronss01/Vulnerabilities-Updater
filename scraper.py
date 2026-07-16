@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import time
+import os
 import logging
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -9,24 +10,40 @@ from summarizer import summarize_vulnerability
 
 logging.basicConfig(level=logging.INFO)
 
+# Define the local directory inside the project folder
+DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "vulnerabilities")
+
+# Ensure the directory exists safely
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
 def get_resilient_session():
     session = requests.Session()
-    # Implement retry logic for transient network failures and rate limits
     retries = Retry(
-        total=4, 
-        backoff_factor=2, 
+        total=5, 
+        backoff_factor=3, 
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"]
     )
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
-    # Mask default python requests user-agent to avoid immediate blocking from WAFs
-    session.headers.update({"User-Agent": "Defensive-Vuln-Intel-Crawler/1.0"})
+    
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0"
+    })
     return session
 
 def clean_html_content(soup: BeautifulSoup) -> str:
-    # Remove noisy tags
     for tag in soup(["script", "style", "nav", "footer", "iframe", "header", "aside"]):
         tag.decompose()
     return soup.get_text(separator=' ', strip=True)
@@ -44,10 +61,11 @@ def run_crawler():
         return
 
     soup = BeautifulSoup(resp.content, "xml")
-    urls = soup.find_all("url")
+    # [::-1] safely reverses the list without returning None
+    urls = soup.find_all("url")[::-1] 
     
     processed_count = 0
-    max_process_per_run = 10 # Prevent massive LLM API billing during initial historical sync
+    max_process_per_run = 10 
     
     for url_tag in urls:
         if processed_count >= max_process_per_run:
@@ -73,8 +91,6 @@ def run_crawler():
             
             page_soup = BeautifulSoup(page_resp.content, "html.parser")
             main_content = page_soup.find("main")
-            
-            # Fallback if no <main> tag exists
             target_soup = main_content if main_content else page_soup.body
             
             if target_soup:
@@ -82,16 +98,28 @@ def run_crawler():
                 
                 if clean_text:
                     intelligence = summarize_vulnerability(clean_text, url, pub_date)
+                    
                     if intelligence:
+                        # 1. Save to Database
                         save_vulnerability(intelligence)
-                        logging.info(f"Successfully processed and stored intel for {url}")
+                        
+                        # 2. Save as JSON File in the vulnerabilities directory
+                        cve_id = intelligence.vulnerability_summary.cve_id
+                        # Sanitize filename in case CVE_ID is empty or malformed
+                        safe_filename = f"{cve_id}.json" if cve_id else f"UNKNOWN_{int(time.time())}.json"
+                        file_path = os.path.join(DOWNLOAD_DIR, safe_filename)
+                        
+                        # Write the Pydantic model to a formatted JSON file
+                        with open(file_path, "w", encoding="utf-8") as f:
+                            f.write(intelligence.model_dump_json(indent=4))
+                            
+                        logging.info(f"Successfully processed, stored, and downloaded intel for {url} as {safe_filename}")
                 
             mark_visited(url, pub_date)
             processed_count += 1
             
-            # Strict Rate Limiting (Polite Crawling)
             time.sleep(3) 
 
         except Exception as e:
             logging.error(f"Failed to process page {url}: {e}")
-            mark_visited(url, pub_date) # Mark visited even on fail to prevent permanent loop block
+            mark_visited(url, pub_date)
