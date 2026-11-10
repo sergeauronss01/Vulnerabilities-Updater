@@ -10,11 +10,9 @@ from summarizer import summarize_vulnerability
 
 logging.basicConfig(level=logging.INFO)
 
-# Define the local directory inside the project folder
-DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "vulnerabilities")
-
-# Ensure the directory exists safely
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+IS_VERCEL = bool(os.environ.get("VERCEL"))
+# Only /tmp is writable on Vercel; locally the folder lives inside the project
+DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/tmp/vulnerabilities" if IS_VERCEL else "vulnerabilities")
 
 def get_resilient_session():
     session = requests.Session()
@@ -50,6 +48,7 @@ def clean_html_content(soup: BeautifulSoup) -> str:
 
 def run_crawler():
     sitemap_url = "https://www.cvedetails.com/sitemap/news-sitemap.xml"
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     session = get_resilient_session()
     
     try:

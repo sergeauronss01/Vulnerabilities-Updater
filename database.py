@@ -1,13 +1,20 @@
 import sqlite3
 import json
 import logging
+import os
+import shutil
 from typing import List, Dict
 from models import VulnerabilityIntelligence
 
-DB_NAME = "vuln_intel.db"
+IS_VERCEL = bool(os.environ.get("VERCEL"))
+BUNDLED_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vuln_intel.db")
+# On Vercel only /tmp is writable. The bundled database is copied there once per instance as a starting point.
+DB_NAME = os.environ.get("DB_PATH", "/tmp/vuln_intel.db" if IS_VERCEL else "vuln_intel.db")
 
 def init_db():
     try:
+        if IS_VERCEL and not os.path.exists(DB_NAME) and os.path.exists(BUNDLED_DB):
+            shutil.copyfile(BUNDLED_DB, DB_NAME)
         with sqlite3.connect(DB_NAME) as conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS visited_urls (
                             url TEXT PRIMARY KEY,

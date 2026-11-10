@@ -91,9 +91,14 @@
 
         async function triggerCrawl() {
             try {
-                const response = await fetch('/api/crawl', { method: 'POST' });
+                const token = prompt('Crawl token');
+                if (!token) return;
+                const response = await fetch('/api/crawl', {
+                    method: 'POST',
+                    headers: { 'X-Crawl-Token': token },
+                });
                 const data = await response.json();
-                alert(data.status);
+                alert(data.status || data.detail);
             } catch (err) {
                 alert('Failed to trigger crawler');
             }
